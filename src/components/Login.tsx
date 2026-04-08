@@ -46,6 +46,9 @@ export function Login({ onLogin }: LoginProps) {
             <p className="text-zinc-400 text-sm tracking-wide uppercase font-medium">
               End-to-end encrypted 1:1 connection
             </p>
+            <p className="text-zinc-500 text-xs mt-2">
+              Both parties enter the same secret word to connect
+            </p>
           </div>
         </div>
 
@@ -58,7 +61,7 @@ export function Login({ onLogin }: LoginProps) {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="Enter master password"
+              placeholder="Enter a shared secret word or phrase"
               className="w-full bg-zinc-900/50 backdrop-blur-md border border-zinc-800 rounded-2xl pl-12 pr-6 py-4 text-lg focus:outline-none focus:border-zinc-500 focus:ring-1 focus:ring-zinc-500 transition-all placeholder:text-zinc-600"
               autoFocus
             />
