@@ -12,12 +12,13 @@ export type ConnectionStatus =
 export type PeerRole = "A" | "B" | null;
 
 const ICE_SERVERS: RTCIceServer[] = [
-  // STUN — no Google (blocked intermittently in Russia); using Cloudflare + metered.ca
-  { urls: "stun:stun.cloudflare.com:3478" },
-  { urls: "stun:stun.metered.ca:80" },
-  { urls: "stun:relay.metered.ca:80" },
+  // STUN — discover public IP for direct P2P (same-network connections)
+  { urls: "stun:stun.l.google.com:19302" },      // Google (globally reliable)
+  { urls: "stun:stun1.l.google.com:19302" },
+  { urls: "stun:stun.cloudflare.com:3478" },      // Cloudflare backup
+  { urls: "stun:openrelay.metered.ca:80" },       // Open Relay STUN
 
-  // TURN UDP — Open Relay Project (metered.ca), free, no sign-up
+  // TURN UDP — relay for cross-network connectivity (Open Relay Project, free)
   {
     urls: "turn:openrelay.metered.ca:80",
     username: "openrelayproject",
@@ -29,7 +30,7 @@ const ICE_SERVERS: RTCIceServer[] = [
     credential: "openrelayproject",
   },
 
-  // TURN TCP/443 — most firewall-resilient; looks like normal HTTPS to deep-packet inspection
+  // TURN TCP/443 — punches through corporate firewalls, looks like HTTPS
   {
     urls: "turn:openrelay.metered.ca:443",
     username: "openrelayproject",
@@ -40,9 +41,10 @@ const ICE_SERVERS: RTCIceServer[] = [
     username: "openrelayproject",
     credential: "openrelayproject",
   },
-  // Secondary TURN from metered.ca relay (different servers, redundancy)
+
+  // TURNS — TURN over TLS, most secure and firewall-friendly
   {
-    urls: "turn:relay.metered.ca:443?transport=tcp",
+    urls: "turns:openrelay.metered.ca:443",
     username: "openrelayproject",
     credential: "openrelayproject",
   },
