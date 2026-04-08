@@ -1,0 +1,5 @@
+{
+  "name": "SecureChat",
+  "description": "End-to-End Encrypted 1:1 Chat App",
+  "requestFramePermissions": ["notifications"]
+}
