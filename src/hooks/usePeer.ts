@@ -5,50 +5,62 @@ import { hashString } from "../lib/crypto";
 export type ConnectionStatus =
   | "disconnected"
   | "connecting"
+  | "waiting"
   | "connected"
   | "error";
+
+export type PeerRole = "A" | "B" | null;
+
+const ICE_SERVERS: RTCIceServer[] = [
+  // STUN — no Google (blocked intermittently in Russia); using Cloudflare + metered.ca
+  { urls: "stun:stun.cloudflare.com:3478" },
+  { urls: "stun:stun.metered.ca:80" },
+  { urls: "stun:relay.metered.ca:80" },
+
+  // TURN UDP — Open Relay Project (metered.ca), free, no sign-up
+  {
+    urls: "turn:openrelay.metered.ca:80",
+    username: "openrelayproject",
+    credential: "openrelayproject",
+  },
+  {
+    urls: "turn:openrelay.metered.ca:3478",
+    username: "openrelayproject",
+    credential: "openrelayproject",
+  },
+
+  // TURN TCP/443 — most firewall-resilient; looks like normal HTTPS to deep-packet inspection
+  {
+    urls: "turn:openrelay.metered.ca:443",
+    username: "openrelayproject",
+    credential: "openrelayproject",
+  },
+  {
+    urls: "turn:openrelay.metered.ca:443?transport=tcp",
+    username: "openrelayproject",
+    credential: "openrelayproject",
+  },
+  // Secondary TURN from metered.ca relay (different servers, redundancy)
+  {
+    urls: "turn:relay.metered.ca:443?transport=tcp",
+    username: "openrelayproject",
+    credential: "openrelayproject",
+  },
+];
 
 export function usePeer(password: string | null) {
   const [status, setStatus] = useState<ConnectionStatus>("disconnected");
   const [error, setError] = useState<string | null>(null);
-  const peerRef = useRef<Peer | null>(null);
-  const connRef = useRef<DataConnection | null>(null);
-  const [messages, setMessages] = useState<any[]>([]);
+  const [role, setRole] = useState<PeerRole>(null);
+  const statusRef = useRef<ConnectionStatus>("disconnected");
 
-  // A callback to pass received raw data up to the UI layer
+  // Stable refs — never change between renders
+  const connRef = useRef<DataConnection | null>(null);
   const onDataReceivedRef = useRef<(data: any) => void>();
 
   const setOnDataReceived = useCallback((cb: (data: any) => void) => {
     onDataReceivedRef.current = cb;
   }, []);
-
-  const setupConnection = (conn: DataConnection) => {
-    connRef.current = conn;
-
-    conn.on("open", () => {
-      setStatus("connected");
-      setError(null);
-    });
-
-    conn.on("data", (data) => {
-      if (onDataReceivedRef.current) {
-        onDataReceivedRef.current(data);
-      }
-    });
-
-    conn.on("close", () => {
-      setStatus("disconnected");
-      connRef.current = null;
-      // If we are B, we should try to reconnect to A
-      // We'll handle this via a general reconnect mechanism or let the user refresh
-    });
-
-    conn.on("error", (err) => {
-      console.error("Connection error:", err);
-      setStatus("error");
-      setError(err.message);
-    });
-  };
 
   useEffect(() => {
     if (!password) return;
@@ -56,31 +68,71 @@ export function usePeer(password: string | null) {
     let isMounted = true;
     let currentPeer: Peer | null = null;
 
+    // Keep status and statusRef in sync — defined inside effect so closure is fresh
+    const setStatusSynced = (s: ConnectionStatus) => {
+      if (!isMounted) return;
+      statusRef.current = s;
+      setStatus(s);
+    };
+
+    const setupConnection = (conn: DataConnection) => {
+      connRef.current = conn;
+
+      const onOpen = () => {
+        console.log("Connection open with:", conn.peer);
+        setStatusSynced("connected");
+        setError(null);
+      };
+
+      // Guard against the race where "open" fires before we attach the listener
+      if (conn.open) {
+        onOpen();
+      } else {
+        conn.on("open", onOpen);
+      }
+
+      conn.on("data", (data) => {
+        onDataReceivedRef.current?.(data);
+      });
+
+      conn.on("close", () => {
+        console.log("Connection closed");
+        setStatusSynced("disconnected");
+        connRef.current = null;
+      });
+
+      conn.on("error", (err) => {
+        console.error("Connection error:", err);
+        setStatusSynced("error");
+        if (isMounted) setError(err.message);
+      });
+    };
+
     const initPeer = async () => {
-      setStatus("connecting");
+      setStatusSynced("connecting");
       try {
         const hash = await hashString(password);
         const baseId = hash.substring(0, 16);
         const peerIdA = `sc-${baseId}-A`;
         const peerIdB = `sc-${baseId}-B`;
 
-        // Try to become Peer A
+        // Try to become Peer A first
         const peerA = new Peer(peerIdA, {
-          debug: 2,
+          debug: 1,
+          config: { iceServers: ICE_SERVERS },
         });
 
         peerA.on("open", (id) => {
           if (!isMounted) return;
-          console.log("Opened as Peer A:", id);
+          console.log("Registered as Peer A:", id);
           currentPeer = peerA;
-          peerRef.current = peerA;
-          // We are A, wait for B to connect
-          setStatus("disconnected"); // Waiting for connection
+          setRole("A");
+          setStatusSynced("waiting");
         });
 
         peerA.on("connection", (conn) => {
           if (!isMounted) return;
-          console.log("Incoming connection from:", conn.peer);
+          console.log("Peer B connected:", conn.peer);
           setupConnection(conn);
         });
 
@@ -88,41 +140,44 @@ export function usePeer(password: string | null) {
           if (!isMounted) return;
 
           if (err.type === "unavailable-id") {
-            console.log("Peer A is taken, trying to become Peer B...");
-            // Peer A is taken, become Peer B
+            // Peer A slot is taken — we are the second user, become Peer B
+            console.log("Peer A slot taken, becoming Peer B...");
             peerA.destroy();
 
             const peerB = new Peer(peerIdB, {
-              debug: 2,
+              debug: 1,
+              config: { iceServers: ICE_SERVERS },
             });
 
             peerB.on("open", (id) => {
               if (!isMounted) return;
-              console.log("Opened as Peer B:", id);
+              console.log("Registered as Peer B:", id);
               currentPeer = peerB;
-              peerRef.current = peerB;
-
-              // Connect to Peer A
-              console.log("Connecting to Peer A...");
+              setRole("B");
+              // Dial Peer A
+              console.log("Dialing Peer A:", peerIdA);
               const conn = peerB.connect(peerIdA, { reliable: true });
               setupConnection(conn);
             });
 
-            peerB.on("error", (errB) => {
+            peerB.on("error", (errB: any) => {
+              if (!isMounted) return;
               console.error("Peer B error:", errB);
-              setStatus("error");
+              setStatusSynced("error");
               setError(errB.message);
             });
           } else {
             console.error("Peer A error:", err);
-            setStatus("error");
+            setStatusSynced("error");
             setError(err.message);
           }
         });
       } catch (err: any) {
         console.error("Init error:", err);
-        setStatus("error");
-        setError(err.message);
+        if (isMounted) {
+          setStatusSynced("error");
+          setError(err.message);
+        }
       }
     };
 
@@ -132,27 +187,33 @@ export function usePeer(password: string | null) {
       isMounted = false;
       if (connRef.current) {
         connRef.current.close();
+        connRef.current = null;
       }
       if (currentPeer) {
         currentPeer.destroy();
       }
+      statusRef.current = "disconnected";
+      setRole(null);
     };
   }, [password]);
 
-  const sendData = useCallback(
-    (data: any) => {
-      if (connRef.current && status === "connected") {
+  const sendData = useCallback((data: any): boolean => {
+    if (connRef.current && statusRef.current === "connected") {
+      try {
         connRef.current.send(data);
         return true;
+      } catch (err) {
+        console.error("sendData error:", err);
+        return false;
       }
-      return false;
-    },
-    [status],
-  );
+    }
+    return false;
+  }, []);
 
   return {
     status,
     error,
+    role,
     sendData,
     setOnDataReceived,
   };
