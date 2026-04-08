@@ -11,11 +11,12 @@ import {
   Copy,
   Check,
   LogOut,
+  RefreshCw,
 } from "lucide-react";
 import { format } from "date-fns";
 import { motion, AnimatePresence } from "motion/react";
 import { Message } from "../hooks/useChat";
-import { ConnectionStatus } from "../hooks/usePeer";
+import { ConnectionStatus, PeerRole } from "../hooks/usePeer";
 import { cn } from "../lib/utils";
 
 interface ChatProps {
@@ -26,6 +27,9 @@ interface ChatProps {
   sendError: string | null;
   onDismissSendError: () => void;
   onLogout: () => void;
+  role: PeerRole;
+  peerError: string | null;
+  onRetry: () => void;
 }
 
 export function Chat({
@@ -36,7 +40,27 @@ export function Chat({
   sendError,
   onDismissSendError,
   onLogout,
+  role,
+  peerError,
+  onRetry,
 }: ChatProps) {
+  // Peer A = indigo/violet palette, Peer B = emerald/teal palette
+  // "me" side always matches my role, "partner" matches the other role
+  const myColor   = role === "B" ? "emerald" : "indigo"; // default to indigo before role resolves
+  const yourColor = role === "B" ? "indigo"  : "emerald";
+
+  const bubbleClass = (sender: "me" | "partner") => {
+    const color = sender === "me" ? myColor : yourColor;
+    if (sender === "me") {
+      return color === "indigo"
+        ? "bg-indigo-600 text-white rounded-br-sm"
+        : "bg-emerald-600 text-white rounded-br-sm";
+    }
+    // partner bubbles: muted tint so they're still readable
+    return color === "indigo"
+      ? "bg-indigo-950/80 text-indigo-100 border border-indigo-800/40 rounded-bl-sm"
+      : "bg-emerald-950/80 text-emerald-100 border border-emerald-800/40 rounded-bl-sm";
+  };
   const [input, setInput] = useState("");
   const [showSettings, setShowSettings] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
@@ -148,6 +172,39 @@ export function Chat({
           <Settings className="w-5 h-5 text-zinc-400" />
         </button>
       </header>
+
+      {/* Connection Error Overlay */}
+      <AnimatePresence>
+        {peerError && status === "error" && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-40 flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 max-w-sm w-full shadow-2xl text-center"
+            >
+              <div className="w-12 h-12 rounded-full bg-red-950/60 border border-red-800/50 flex items-center justify-center mx-auto mb-4">
+                <RefreshCw className="w-5 h-5 text-red-400" />
+              </div>
+              <h3 className="text-lg font-medium text-white mb-2">Connection failed</h3>
+              <p className="text-zinc-400 text-sm mb-6">
+                Could not open a relay channel. This usually means the TURN server is temporarily unreachable.
+              </p>
+              <button
+                onClick={onRetry}
+                className="w-full px-4 py-3 rounded-xl bg-white text-black font-medium hover:bg-zinc-200 active:scale-[0.98] transition-all"
+              >
+                Retry connection
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Send Error Banner */}
       <AnimatePresence>
@@ -331,9 +388,7 @@ export function Chat({
                   <div
                     className={cn(
                       "max-w-[85vw] sm:max-w-[75%] rounded-2xl px-4 py-3 relative shadow-sm",
-                      isMe
-                        ? "bg-white text-black rounded-br-sm"
-                        : "bg-zinc-800/80 text-white rounded-bl-sm border border-zinc-700/50",
+                      bubbleClass(msg.sender),
                     )}
                   >
                     {msg.type === "text" ? (

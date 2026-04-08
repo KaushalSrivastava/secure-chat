@@ -12,7 +12,7 @@ export default function App() {
     () => localStorage.getItem(SESSION_KEY),
   );
   const [sendError, setSendError] = useState<string | null>(null);
-  const { status, sendData, setOnDataReceived } = usePeer(password);
+  const { status, error: peerError, sendData, setOnDataReceived, role } = usePeer(password);
   const { messages, addMessage, clearHistory, isReady } = useChat(password);
 
   // Handle incoming messages
@@ -93,6 +93,15 @@ export default function App() {
     setSendError(null);
   }, []);
 
+  const handleRetry = useCallback(() => {
+    // Re-trigger the usePeer effect by momentarily clearing then restoring password
+    const saved = localStorage.getItem(SESSION_KEY);
+    if (saved) {
+      setPassword(null);
+      setTimeout(() => setPassword(saved), 50);
+    }
+  }, []);
+
   return (
     <AnimatePresence mode="wait">
       {!password || !isReady ? (
@@ -122,6 +131,9 @@ export default function App() {
             sendError={sendError}
             onDismissSendError={() => setSendError(null)}
             onLogout={handleLogout}
+            role={role}
+            peerError={peerError}
+            onRetry={handleRetry}
           />
         </motion.div>
       )}
