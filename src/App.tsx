@@ -5,8 +5,13 @@ import { usePeer } from "./hooks/usePeer";
 import { useChat, Message } from "./hooks/useChat";
 import { AnimatePresence, motion } from "motion/react";
 
+const SESSION_KEY = "sc_session_key";
+
 export default function App() {
-  const [password, setPassword] = useState<string | null>(null);
+  const [password, setPassword] = useState<string | null>(
+    () => localStorage.getItem(SESSION_KEY),
+  );
+  const [sendError, setSendError] = useState<string | null>(null);
   const { status, sendData, setOnDataReceived } = usePeer(password);
   const { messages, addMessage, clearHistory, isReady } = useChat(password);
 
@@ -64,16 +69,29 @@ export default function App() {
         type,
       };
 
-      // Send to partner
       const success = sendData(msg);
-
-      // Add to local state even if not sent?
-      // Yes, but maybe indicate if it wasn't sent. For simplicity, we just add it.
-      // In a real app, we'd queue it. Since it's 1:1 and simple, we'll just add it.
-      addMessage(msg);
+      if (success) {
+        addMessage(msg);
+        setSendError(null);
+      } else {
+        setSendError("Not connected — message not delivered.");
+        // Still show locally so user can retry / copy the text
+        addMessage({ ...msg, text: `⚠️ ${msg.text}` });
+      }
     },
     [sendData, addMessage],
   );
+
+  const handleLogin = useCallback((pw: string) => {
+    localStorage.setItem(SESSION_KEY, pw);
+    setPassword(pw);
+  }, []);
+
+  const handleLogout = useCallback(() => {
+    localStorage.removeItem(SESSION_KEY);
+    setPassword(null);
+    setSendError(null);
+  }, []);
 
   return (
     <AnimatePresence mode="wait">
@@ -86,7 +104,7 @@ export default function App() {
           transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
           className="h-[100dvh] w-full"
         >
-          <Login onLogin={setPassword} />
+          <Login onLogin={handleLogin} />
         </motion.div>
       ) : (
         <motion.div
@@ -101,6 +119,9 @@ export default function App() {
             onSendMessage={handleSendMessage}
             status={status}
             onClearHistory={clearHistory}
+            sendError={sendError}
+            onDismissSendError={() => setSendError(null)}
+            onLogout={handleLogout}
           />
         </motion.div>
       )}

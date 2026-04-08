@@ -10,6 +10,7 @@ import {
   Lock,
   Copy,
   Check,
+  LogOut,
 } from "lucide-react";
 import { format } from "date-fns";
 import { motion, AnimatePresence } from "motion/react";
@@ -22,6 +23,9 @@ interface ChatProps {
   onSendMessage: (text: string, type: "text" | "image") => void;
   status: ConnectionStatus;
   onClearHistory: () => void;
+  sendError: string | null;
+  onDismissSendError: () => void;
+  onLogout: () => void;
 }
 
 export function Chat({
@@ -29,6 +33,9 @@ export function Chat({
   onSendMessage,
   status,
   onClearHistory,
+  sendError,
+  onDismissSendError,
+  onLogout,
 }: ChatProps) {
   const [input, setInput] = useState("");
   const [showSettings, setShowSettings] = useState(false);
@@ -117,7 +124,7 @@ export function Chat({
                 "w-3 h-3 rounded-full",
                 status === "connected"
                   ? "bg-green-500"
-                  : status === "connecting"
+                  : status === "connecting" || status === "waiting"
                     ? "bg-yellow-500 animate-pulse"
                     : "bg-red-500",
               )}
@@ -129,7 +136,7 @@ export function Chat({
           <span className="font-medium tracking-wide">
             {status === "connected"
               ? "Connected"
-              : status === "connecting"
+              : status === "connecting" || status === "waiting"
                 ? "Waiting for partner..."
                 : "Disconnected"}
           </span>
@@ -141,6 +148,24 @@ export function Chat({
           <Settings className="w-5 h-5 text-zinc-400" />
         </button>
       </header>
+
+      {/* Send Error Banner */}
+      <AnimatePresence>
+        {sendError && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.2 }}
+            className="flex items-center justify-between px-4 py-2.5 bg-red-950/70 border-b border-red-800/50 text-red-300 text-sm"
+          >
+            <span>{sendError}</span>
+            <button onClick={onDismissSendError} className="ml-3 p-1 hover:bg-red-900/50 rounded-full transition-colors">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Settings Panel */}
       <AnimatePresence>
@@ -186,6 +211,13 @@ export function Chat({
                 >
                   <Trash2 className="w-4 h-4" />
                   <span className="text-sm">Clear History</span>
+                </button>
+                <button
+                  onClick={() => { setShowSettings(false); onLogout(); }}
+                  className="w-full flex items-center space-x-3 px-4 py-3 hover:bg-zinc-800/50 rounded-xl transition-colors text-left"
+                >
+                  <LogOut className="w-4 h-4 text-zinc-400" />
+                  <span className="text-sm text-zinc-300">Change session</span>
                 </button>
               </div>
             </motion.div>
@@ -369,10 +401,10 @@ export function Chat({
 
           <button
             type="submit"
-            disabled={!input.trim() && status !== "connected"}
+            disabled={!input.trim() || status !== "connected"}
             className={cn(
               "p-4 rounded-full flex items-center justify-center transition-all shadow-sm",
-              input.trim()
+              input.trim() && status === "connected"
                 ? "bg-white text-black hover:bg-zinc-200 active:scale-95"
                 : "bg-zinc-900 text-zinc-600",
             )}
