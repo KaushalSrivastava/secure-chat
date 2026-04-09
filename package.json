@@ -12,6 +12,8 @@
   },
   "dependencies": {
     "@google/genai": "^1.29.0",
+    "@noble/hashes": "^2.0.1",
+    "@noble/secp256k1": "^3.0.0",
     "@tailwindcss/vite": "^4.1.14",
     "@vitejs/plugin-react": "^5.0.4",
     "clsx": "^2.1.1",

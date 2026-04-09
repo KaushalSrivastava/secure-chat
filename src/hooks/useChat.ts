@@ -1,15 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
-import {
-  deriveKey,
-  encryptMessage,
-  decryptMessage,
-  EncryptedPayload,
-} from "../lib/crypto";
+import { deriveKey, encryptMessage, decryptMessage, hashString, EncryptedPayload } from "../lib/crypto";
 
 export interface Message {
   id: string;
   text: string;
   sender: "me" | "partner";
+  senderDeviceId?: string; // for multi-user bubble colors
   timestamp: number;
   type: "text" | "image";
 }
@@ -18,45 +14,52 @@ interface EncryptedStoredMessage {
   id: string;
   payload: EncryptedPayload;
   sender: "me" | "partner";
+  senderDeviceId?: string;
   timestamp: number;
   type: "text" | "image";
 }
 
-const STORAGE_KEY = "secure_chat_messages";
 const MS_IN_24_HOURS = 24 * 60 * 60 * 1000;
 
 export function useChat(password: string | null) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [cryptoKey, setCryptoKey] = useState<CryptoKey | null>(null);
+  const [storageKey, setStorageKey] = useState<string | null>(null);
   const [isReady, setIsReady] = useState(false);
 
-  // Initialize crypto key
+  // Derive crypto key + per-session storage key together
   useEffect(() => {
     if (!password) {
       setCryptoKey(null);
+      setStorageKey(null);
       setIsReady(false);
+      setMessages([]); // clear stale messages on logout so they don't flash
       return;
     }
 
     let isMounted = true;
-    deriveKey(password).then((key) => {
-      if (isMounted) {
-        setCryptoKey(key);
+    Promise.all([deriveKey(password), hashString(password)]).then(
+      ([key, hash]) => {
+        if (isMounted) {
+          setCryptoKey(key);
+          // Per-session key: each password gets its own storage bucket
+          setStorageKey(`scc_${hash.substring(0, 16)}`);
+        }
       }
-    });
+    );
 
     return () => {
       isMounted = false;
     };
   }, [password]);
 
-  // Load and decrypt messages from local storage
+  // Load and decrypt messages from local storage once keys are ready
   useEffect(() => {
-    if (!cryptoKey) return;
+    if (!cryptoKey || !storageKey) return;
 
     const loadMessages = async () => {
       try {
-        const stored = localStorage.getItem(STORAGE_KEY);
+        const stored = localStorage.getItem(storageKey);
         if (!stored) {
           setIsReady(true);
           return;
@@ -65,14 +68,12 @@ export function useChat(password: string | null) {
         const encryptedMessages: EncryptedStoredMessage[] = JSON.parse(stored);
         const now = Date.now();
 
-        // Filter out messages older than 24 hours
         const recentEncrypted = encryptedMessages.filter(
-          (m) => now - m.timestamp < MS_IN_24_HOURS,
+          (m) => now - m.timestamp < MS_IN_24_HOURS
         );
 
-        // If we filtered some out, update storage
         if (recentEncrypted.length !== encryptedMessages.length) {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(recentEncrypted));
+          localStorage.setItem(storageKey, JSON.stringify(recentEncrypted));
         }
 
         const decryptedMessages: Message[] = [];
@@ -83,55 +84,44 @@ export function useChat(password: string | null) {
               id: em.id,
               text,
               sender: em.sender,
+              senderDeviceId: em.senderDeviceId,
               timestamp: em.timestamp,
               type: em.type,
             });
-          } catch (err) {
-            console.error("Failed to decrypt a message, skipping...", err);
+          } catch {
+            // Wrong key or corrupted — skip
           }
         }
 
         setMessages(decryptedMessages);
         setIsReady(true);
-      } catch (err) {
-        console.error("Failed to load messages:", err);
+      } catch {
         setIsReady(true);
       }
     };
 
     loadMessages();
 
-    // Periodic cleanup every minute
     const interval = setInterval(() => {
-      setMessages((currentMessages) => {
+      setMessages((current) => {
         const now = Date.now();
-        const filtered = currentMessages.filter(
-          (m) => now - m.timestamp < MS_IN_24_HOURS,
-        );
-        if (filtered.length !== currentMessages.length) {
-          // Re-save to local storage handled by addMessage? No, we need to save explicitly.
-          // But saveMessages requires cryptoKey. We can just let the next addMessage save it,
-          // or we can call saveMessages here. Since saveMessages is async and we are in a setState,
-          // it's better to just trigger a re-save outside.
-          return filtered;
-        }
-        return currentMessages;
+        return current.filter((m) => now - m.timestamp < MS_IN_24_HOURS);
       });
-    }, 60000);
+    }, 60_000);
 
     return () => clearInterval(interval);
-  }, [cryptoKey]);
+  }, [cryptoKey, storageKey]);
 
   // Save messages to local storage whenever they change
   useEffect(() => {
-    if (!cryptoKey || !isReady) return;
+    if (!cryptoKey || !storageKey || !isReady) return;
 
     const save = async () => {
       try {
-        const encryptedMessages: EncryptedStoredMessage[] = [];
+        const encrypted: EncryptedStoredMessage[] = [];
         for (const m of messages) {
           const payload = await encryptMessage(m.text, cryptoKey);
-          encryptedMessages.push({
+          encrypted.push({
             id: m.id,
             payload,
             sender: m.sender,
@@ -139,14 +129,14 @@ export function useChat(password: string | null) {
             type: m.type,
           });
         }
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(encryptedMessages));
+        localStorage.setItem(storageKey, JSON.stringify(encrypted));
       } catch (err) {
         console.error("Failed to save messages:", err);
       }
     };
 
     save();
-  }, [messages, cryptoKey, isReady]);
+  }, [messages, cryptoKey, storageKey, isReady]);
 
   const addMessage = useCallback((message: Message) => {
     setMessages((prev) => [...prev, message]);
@@ -154,14 +144,8 @@ export function useChat(password: string | null) {
 
   const clearHistory = useCallback(() => {
     setMessages([]);
-    localStorage.removeItem(STORAGE_KEY);
-  }, []);
+    if (storageKey) localStorage.removeItem(storageKey);
+  }, [storageKey]);
 
-  return {
-    messages,
-    addMessage,
-    clearHistory,
-    isReady,
-    cryptoKey,
-  };
+  return { messages, addMessage, clearHistory, isReady, cryptoKey };
 }
