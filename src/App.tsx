@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Login } from "./components/Login";
 import { Chat } from "./components/Chat";
-import { useNostr, getDeviceId } from "./hooks/useNostr";
+import { useSocket, getDeviceId } from "./hooks/useSocket";
 import { useChat, Message } from "./hooks/useChat";
 import { AnimatePresence, motion } from "motion/react";
 
@@ -12,6 +12,21 @@ export default function App() {
   const [password, setPassword] = useState<string | null>(() =>
     localStorage.getItem(SESSION_KEY),
   );
+  
+  const [profileLocation, setProfileLocation] = useState<{country?: string, timezone?: string}>({});
+  useEffect(() => {
+     fetch("https://ipapi.co/json/").then(res => res.json()).then(data => {
+        setProfileLocation({
+           country: data.country_name || data.country,
+           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || data.timezone
+        });
+     }).catch(() => {
+        setProfileLocation({ timezone: Intl.DateTimeFormat().resolvedOptions().timeZone });
+     })
+  }, []);
+  const [nickname, setNickname] = useState<string>(
+    () => localStorage.getItem("sc_nickname") || "Partner",
+  );
   const [sendError, setSendError] = useState<string | null>(null);
 
   const {
@@ -20,6 +35,7 @@ export default function App() {
     role,
     participants,
     typingUsers,
+    profiles,
     sendData,
     broadcastClear,
     broadcastClearMsg,
@@ -31,13 +47,16 @@ export default function App() {
     setOnClearMsg,
     setOnRead,
     setOnSyncReq,
-  } = useNostr(password);
+    setOnReaction,
+    broadcastReaction,
+  } = useSocket(password, nickname, profileLocation.country, profileLocation.timezone);
 
   const {
     messages,
     addMessage,
     deleteMessage,
     markRead,
+    addReaction,
     clearHistory,
     isReady,
   } = useChat(password);
@@ -50,17 +69,18 @@ export default function App() {
     setOnRead((msgId, devId) => markRead(msgId, devId));
     setOnSyncReq((devId) => {
       // Re-broadcast our presence when someone requests sync
-      // (Actual message sync handles via Nostr's 24h subscribe window, but
-      // this helps us detect who is currently active).
     });
+    setOnReaction((msgId, emoji, devId) => addReaction(msgId, emoji, devId));
   }, [
     setOnClear,
     setOnClearMsg,
     setOnRead,
     setOnSyncReq,
+    setOnReaction,
     clearHistory,
     deleteMessage,
     markRead,
+    addReaction,
   ]);
 
   useEffect(() => {
@@ -73,8 +93,11 @@ export default function App() {
           sender: "partner",
           senderDeviceId: d.senderDeviceId as string | undefined,
           timestamp: (d.timestamp as number) || Date.now(),
-          type: d.type as "text" | "image",
+          type: d.type as "text" | "image" | "audio",
           expiresIn: d.expiresIn as number | undefined,
+          replyToId: d.replyToId as string | undefined,
+          reactions: (d.reactions as Record<string, string[]>) || {},
+          audioDuration: d.audioDuration as number | undefined,
         };
         addMessage(msg);
 
@@ -128,7 +151,7 @@ export default function App() {
   // ---- Actions Wiring ----
 
   const handleSendMessage = useCallback(
-    (text: string, type: "text" | "image", opts?: { expiresIn?: number }) => {
+    (text: string, type: "text" | "image" | "audio", opts?: { expiresIn?: number, replyToId?: string, audioDuration?: number }) => {
       const msg: Message = {
         id: crypto.randomUUID(),
         text,
@@ -137,7 +160,10 @@ export default function App() {
         timestamp: Date.now(),
         type,
         expiresIn: opts?.expiresIn,
+        replyToId: opts?.replyToId,
         readBy: [], // explicitly empty initially
+        reactions: {},
+        audioDuration: opts?.audioDuration,
       };
 
       const wireMsg = { ...msg }; // senderDeviceId is already inside
@@ -178,8 +204,10 @@ export default function App() {
           className="h-[100dvh] w-full"
         >
           <Login
-            onLogin={(pw) => {
+            onLogin={(pw, nick) => {
               localStorage.setItem(SESSION_KEY, pw);
+              localStorage.setItem("sc_nickname", nick || "Partner");
+              setNickname(nick || "Partner");
               setPassword(pw);
             }}
           />
@@ -197,6 +225,7 @@ export default function App() {
             myDeviceId={MY_DEVICE_ID}
             participants={participants}
             typingUsers={typingUsers}
+            profiles={profiles}
             onSendMessage={handleSendMessage}
             status={status}
             sendError={sendError}
@@ -212,6 +241,7 @@ export default function App() {
             onClearMsg={handleClearMsg}
             onSyncReq={broadcastSyncReq}
             onTyping={broadcastTyping}
+            onReaction={broadcastReaction}
             onDismissSendError={() => setSendError(null)}
             onLogout={() => {
               localStorage.removeItem(SESSION_KEY);

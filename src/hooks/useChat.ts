@@ -13,11 +13,14 @@ export interface Message {
   sender: "me" | "partner";
   senderDeviceId?: string;
   timestamp: number;
-  type: "text" | "image";
+  type: "text" | "image" | "audio";
 
   expiresIn?: number;
   isViewed?: boolean;
   readBy?: string[];
+  replyToId?: string;
+  reactions?: Record<string, string[]>;
+  audioDuration?: number;
 }
 
 interface EncryptedStoredMessage {
@@ -26,10 +29,13 @@ interface EncryptedStoredMessage {
   sender: "me" | "partner";
   senderDeviceId?: string;
   timestamp: number;
-  type: "text" | "image";
+  type: "text" | "image" | "audio";
   expiresIn?: number;
   isViewed?: boolean;
   readBy?: string[];
+  replyToId?: string;
+  reactions?: Record<string, string[]>;
+  audioDuration?: number;
 }
 
 interface ChatMeta {
@@ -129,6 +135,9 @@ export function useChat(password: string | null) {
               expiresIn: em.expiresIn,
               isViewed: em.isViewed,
               readBy: em.readBy || [],
+              replyToId: em.replyToId,
+              reactions: em.reactions || {},
+              audioDuration: em.audioDuration,
             });
           } catch {
             /* skip */
@@ -172,6 +181,9 @@ export function useChat(password: string | null) {
             expiresIn: m.expiresIn,
             isViewed: m.isViewed,
             readBy: m.readBy,
+            replyToId: m.replyToId,
+            reactions: m.reactions,
+            audioDuration: m.audioDuration,
           });
         }
         localStorage.setItem(storageKey, JSON.stringify(encrypted));
@@ -222,6 +234,23 @@ export function useChat(password: string | null) {
     );
   }, []);
 
+  const addReaction = useCallback((msgId: string, emoji: string, deviceId: string) => {
+    setMessages((prev) =>
+      prev.map((m) => {
+        if (m.id === msgId) {
+          const reactions = { ...(m.reactions || {}) };
+          const users = [...(reactions[emoji] || [])];
+          if (!users.includes(deviceId)) {
+            users.push(deviceId);
+          }
+          reactions[emoji] = users;
+          return { ...m, reactions };
+        }
+        return m;
+      }),
+    );
+  }, []);
+
   const clearHistory = useCallback(
     (remoteTs?: number) => {
       const ts = remoteTs || Date.now();
@@ -241,6 +270,7 @@ export function useChat(password: string | null) {
     addMessage,
     deleteMessage,
     markRead,
+    addReaction,
     clearHistory,
     isReady,
   };

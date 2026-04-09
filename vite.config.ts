@@ -1,9 +1,8 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
-import {defineConfig, loadEnv} from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
-
 export default defineConfig(({mode}) => {
   const env = loadEnv(mode, '.', '');
   return {
@@ -14,11 +13,11 @@ export default defineConfig(({mode}) => {
       VitePWA({
         registerType: 'autoUpdate',
         manifest: {
-          name: 'SecureChat',
-          short_name: 'SecureChat',
-          description: 'End-to-End Encrypted 1:1 Chat',
-          theme_color: '#000000',
-          background_color: '#000000',
+          name: 'Moments',
+          short_name: 'Moments',
+          description: 'Share a moment. Connect in a private, fleeting space.',
+          theme_color: '#120c18',
+          background_color: '#120c18',
           display: 'standalone',
           icons: [
             {
@@ -40,7 +39,7 @@ export default defineConfig(({mode}) => {
     },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
-      // Do not modifyâfile watching is disabled to prevent flickering during agent edits.
+      // Do not modifyâ€”file watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',
     },
   };
