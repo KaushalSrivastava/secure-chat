@@ -1,60 +1,72 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Login } from "./components/Login";
 import { Chat } from "./components/Chat";
-import { usePeer } from "./hooks/usePeer";
+import { useNostr, getDeviceId } from "./hooks/useNostr";
 import { useChat, Message } from "./hooks/useChat";
 import { AnimatePresence, motion } from "motion/react";
 
 const SESSION_KEY = "sc_session_key";
+const MY_DEVICE_ID = getDeviceId();
 
 export default function App() {
   const [password, setPassword] = useState<string | null>(
     () => localStorage.getItem(SESSION_KEY),
   );
   const [sendError, setSendError] = useState<string | null>(null);
-  const { status, error: peerError, sendData, setOnDataReceived, role } = usePeer(password);
+
+  const {
+    status,
+    error: peerError,
+    role,
+    participants,
+    sendData,
+    broadcastClear,
+    setOnDataReceived,
+    setOnClear,
+  } = useNostr(password);
+
   const { messages, addMessage, clearHistory, isReady } = useChat(password);
 
-  // Handle incoming messages
+  // When a remote user clears the chat — clear ours too
   useEffect(() => {
-    setOnDataReceived((data: any) => {
-      if (data && data.id && data.text && data.type) {
+    setOnClear(() => {
+      clearHistory();
+    });
+  }, [setOnClear, clearHistory]);
+
+  // Handle incoming chat messages
+  useEffect(() => {
+    setOnDataReceived((data: unknown) => {
+      const d = data as Record<string, unknown>;
+      if (d && d.id && d.text && d.type) {
         const msg: Message = {
-          id: data.id,
-          text: data.text,
+          id: d.id as string,
+          text: d.text as string,
           sender: "partner",
-          timestamp: data.timestamp || Date.now(),
-          type: data.type,
+          senderDeviceId: d.senderDeviceId as string | undefined,
+          timestamp: (d.timestamp as number) || Date.now(),
+          type: d.type as "text" | "image",
         };
         addMessage(msg);
 
-        // Show notification if permitted and document is hidden
+        // Push notification if document hidden
         try {
-          if (
-            document.hidden &&
-            "Notification" in window &&
-            Notification.permission === "granted"
-          ) {
+          if (document.hidden && "Notification" in window && Notification.permission === "granted") {
             try {
               new Notification("New Message", {
                 body: msg.type === "text" ? msg.text : "📷 Image",
-                icon: "/pwa-192x192.png",
+                icon: "/icon.svg",
               });
-            } catch (e) {
-              // Fallback for Android Chrome which requires ServiceWorkerRegistration.showNotification
-              if ('serviceWorker' in navigator) {
-                navigator.serviceWorker.ready.then((registration) => {
-                  registration.showNotification("New Message", {
-                    body: msg.type === "text" ? msg.text : "📷 Image",
-                    icon: "/pwa-192x192.png",
-                  });
-                });
-              }
+            } catch {
+              navigator.serviceWorker?.ready.then(reg =>
+                reg.showNotification("New Message", {
+                  body: msg.type === "text" ? msg.text : "📷 Image",
+                  icon: "/icon.svg",
+                }),
+              );
             }
           }
-        } catch (err) {
-          console.error("Notification error:", err);
-        }
+        } catch { /* ignore notification errors */ }
       }
     });
   }, [setOnDataReceived, addMessage]);
@@ -62,20 +74,22 @@ export default function App() {
   const handleSendMessage = useCallback(
     (text: string, type: "text" | "image") => {
       const msg: Message = {
-        id: Math.random().toString(36).substring(2, 9),
+        id: crypto.randomUUID(),
         text,
         sender: "me",
+        senderDeviceId: MY_DEVICE_ID,
         timestamp: Date.now(),
         type,
       };
 
-      const success = sendData(msg);
+      // Include senderDeviceId in the wire payload for multi-user colors
+      const wireMsg = { ...msg, senderDeviceId: MY_DEVICE_ID };
+      const success = sendData(wireMsg);
       if (success) {
         addMessage(msg);
         setSendError(null);
       } else {
-        setSendError("Not connected — message not delivered.");
-        // Still show locally so user can retry / copy the text
+        setSendError("No relay connected — message not delivered.");
         addMessage({ ...msg, text: `⚠️ ${msg.text}` });
       }
     },
@@ -94,13 +108,14 @@ export default function App() {
   }, []);
 
   const handleRetry = useCallback(() => {
-    // Re-trigger the usePeer effect by momentarily clearing then restoring password
     const saved = localStorage.getItem(SESSION_KEY);
-    if (saved) {
-      setPassword(null);
-      setTimeout(() => setPassword(saved), 50);
-    }
+    if (saved) { setPassword(null); setTimeout(() => setPassword(saved), 50); }
   }, []);
+
+  const handleClearHistory = useCallback(() => {
+    clearHistory();       // local clear
+    broadcastClear();     // tell all other devices
+  }, [clearHistory, broadcastClear]);
 
   return (
     <AnimatePresence mode="wait">
@@ -127,13 +142,14 @@ export default function App() {
             messages={messages}
             onSendMessage={handleSendMessage}
             status={status}
-            onClearHistory={clearHistory}
+            onClearHistory={handleClearHistory}
             sendError={sendError}
             onDismissSendError={() => setSendError(null)}
             onLogout={handleLogout}
-            role={role}
-            peerError={peerError}
+            myDeviceId={MY_DEVICE_ID}
+            participants={participants}
             onRetry={handleRetry}
+            peerError={peerError}
           />
         </motion.div>
       )}
