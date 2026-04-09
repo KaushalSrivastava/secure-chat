@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Lock, Shield, Key } from "lucide-react";
+import { ShieldCheck, Key, Eye, EyeOff, Lock } from "lucide-react";
 import { motion } from "motion/react";
 
 interface LoginProps {
@@ -8,85 +8,105 @@ interface LoginProps {
 
 export function Login({ onLogin }: LoginProps) {
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (password.trim()) {
-      onLogin(password.trim());
-    }
+    if (password.trim()) onLogin(password.trim());
   };
 
   return (
-    <div className="min-h-screen bg-[#050505] text-white flex flex-col items-center justify-center p-6 relative overflow-hidden">
-      {/* Atmospheric Background */}
-      <div className="absolute inset-0 z-0 pointer-events-none">
-        <div className="absolute top-[-20%] left-[-10%] w-[70%] h-[70%] rounded-full bg-zinc-800/20 blur-[120px]" />
-        <div className="absolute bottom-[-20%] right-[-10%] w-[60%] h-[60%] rounded-full bg-zinc-800/10 blur-[100px]" />
+    <div className="min-h-screen flex flex-col items-center justify-center p-6 relative overflow-hidden"
+         style={{ background: "linear-gradient(160deg, #0d1f35 0%, #0e1621 50%, #0a1628 100%)" }}>
+
+      {/* Background glow blobs */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        <div className="absolute top-[-10%] left-[20%] w-[60%] h-[50%] rounded-full"
+             style={{ background: "radial-gradient(circle, rgba(43,91,219,0.12) 0%, transparent 70%)", filter: "blur(60px)" }} />
+        <div className="absolute bottom-[-10%] right-[10%] w-[50%] h-[40%] rounded-full"
+             style={{ background: "radial-gradient(circle, rgba(43,91,219,0.07) 0%, transparent 70%)", filter: "blur(80px)" }} />
       </div>
 
-      <motion.div 
+      <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
-        className="w-full max-w-md space-y-10 z-10"
+        transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
+        className="w-full max-w-sm z-10"
       >
-        <div className="text-center space-y-4">
-          <motion.div 
-            initial={{ scale: 0.8, opacity: 0 }}
+        {/* Logo */}
+        <div className="flex flex-col items-center mb-10">
+          <motion.div
+            initial={{ scale: 0.7, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            transition={{ delay: 0.2, duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
-            className="mx-auto w-20 h-20 bg-zinc-900/80 backdrop-blur-xl rounded-full flex items-center justify-center border border-zinc-800/50 shadow-2xl"
+            transition={{ delay: 0.15, duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
+            className="relative mb-5"
           >
-            <Shield className="w-8 h-8 text-zinc-300" strokeWidth={1.5} />
+            <div className="w-24 h-24 rounded-full flex items-center justify-center"
+                 style={{ background: "linear-gradient(135deg, #1d4ed8 0%, #2b5bdb 50%, #3b82f6 100%)", boxShadow: "0 0 60px rgba(43,91,219,0.4)" }}>
+              <ShieldCheck className="w-11 h-11 text-white" strokeWidth={1.5} />
+            </div>
           </motion.div>
-          <div>
-            <h1 className="text-4xl font-light tracking-tight mb-3 text-white">
-              SecureChat
-            </h1>
-            <p className="text-zinc-400 text-sm tracking-wide uppercase font-medium">
-              End-to-end encrypted 1:1 connection
-            </p>
-            <p className="text-zinc-500 text-xs mt-2">
-              Both parties enter the same secret word to connect
-            </p>
-          </div>
+          <h1 className="text-3xl font-semibold tracking-tight text-white mb-2">SecureChat</h1>
+          <p className="text-sm text-slate-400 text-center leading-relaxed">
+            Enter a shared passphrase to open<br />an encrypted private channel
+          </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6 mt-12">
-          <div className="relative group">
-            <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none">
-              <Key className="h-5 w-5 text-zinc-500 group-focus-within:text-zinc-300 transition-colors" />
+        {/* Form */}
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <div className="relative">
+            <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+              <Key className="h-4.5 w-4.5 text-slate-500" />
             </div>
             <input
-              type="password"
+              type={showPassword ? "text" : "password"}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="Enter a shared secret word or phrase"
-              className="w-full bg-zinc-900/50 backdrop-blur-md border border-zinc-800 rounded-2xl pl-12 pr-6 py-4 text-lg focus:outline-none focus:border-zinc-500 focus:ring-1 focus:ring-zinc-500 transition-all placeholder:text-zinc-600"
+              placeholder="Shared passphrase…"
+              className="w-full pl-11 pr-12 py-3.5 rounded-xl text-[15px] text-white placeholder-slate-600 outline-none transition-all"
+              style={{
+                background: "rgba(31,45,61,0.8)",
+                border: "1px solid rgba(255,255,255,0.08)",
+                boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)",
+              }}
+              onFocus={e => (e.currentTarget.style.borderColor = "rgba(59,130,246,0.5)")}
+              onBlur={e => (e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)")}
               autoFocus
             />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-500 hover:text-slate-300 transition-colors"
+            >
+              {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </button>
           </div>
-          <button
+
+          <motion.button
             type="submit"
             disabled={!password.trim()}
-            className="w-full bg-white text-black rounded-2xl px-6 py-4 font-medium text-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-zinc-200 active:scale-[0.98] transition-all"
+            whileTap={{ scale: 0.98 }}
+            className="w-full py-3.5 rounded-xl text-[15px] font-semibold text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+            style={{
+              background: password.trim()
+                ? "linear-gradient(135deg, #1d4ed8 0%, #3b82f6 100%)"
+                : "rgba(31,45,61,0.8)",
+              boxShadow: password.trim() ? "0 4px 20px rgba(43,91,219,0.35)" : "none",
+            }}
           >
-            Connect
-          </button>
+            Join Channel
+          </motion.button>
         </form>
 
-        <motion.div 
+        {/* Footer note */}
+        <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ delay: 0.6, duration: 0.8 }}
-          className="text-center mt-12"
+          transition={{ delay: 0.5 }}
+          className="mt-8 flex items-center justify-center gap-2 text-xs text-slate-600"
         >
-          <div className="inline-flex items-center space-x-2 px-4 py-2 rounded-full bg-zinc-900/50 border border-zinc-800/50">
-            <Lock className="w-3 h-3 text-zinc-500" />
-            <p className="text-xs text-zinc-400 font-medium tracking-wide">
-              Messages auto-delete after 24 hours
-            </p>
-          </div>
+          <Lock className="w-3 h-3" />
+          <span>End-to-end encrypted · No servers · Messages expire in 24h</span>
         </motion.div>
       </motion.div>
     </div>
