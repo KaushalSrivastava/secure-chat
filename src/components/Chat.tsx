@@ -15,8 +15,8 @@ import {
   RefreshCw,
   Users,
   ChevronDown,
-  Flame,
   Timer,
+  Download,
 } from "lucide-react";
 import { format, isToday, isYesterday } from "date-fns";
 import { motion, AnimatePresence } from "motion/react";
@@ -46,7 +46,6 @@ function dateLabel(ts: number) {
 }
 
 const isEmojiOnly = (text: string) => {
-  // Matches strings that contain ONLY emojis and spaces
   const emojiRegex =
     /^(\p{Emoji_Presentation}|\p{Emoji}\uFE0F|\p{Extended_Pictographic})(\s*(\p{Emoji_Presentation}|\p{Emoji}\uFE0F|\p{Extended_Pictographic}))*$/u;
   return text.trim().length <= 15 && emojiRegex.test(text.trim());
@@ -71,11 +70,10 @@ interface ChatProps {
   onSendMessage: (
     text: string,
     type: "text" | "image",
-    opts?: { viewOnce?: boolean; expiresIn?: number },
+    opts?: { expiresIn?: number },
   ) => void;
   onClearHistory: () => void;
   onClearMsg: (id: string) => void;
-  onMarkViewed: (id: string) => void;
   onSyncReq: () => void;
   onTyping: (isTyping: boolean) => void;
   onDismissSendError: () => void;
@@ -94,7 +92,6 @@ export function Chat({
   onSendMessage,
   onClearHistory,
   onClearMsg,
-  onMarkViewed,
   onSyncReq,
   onTyping,
   onDismissSendError,
@@ -108,14 +105,12 @@ export function Chat({
   const [previewImage, setPreviewImage] = useState<{
     id: string;
     src: string;
-    viewOnce: boolean;
   } | null>(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [showScrollDown, setShowScrollDown] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
 
   const [burnIdx, setBurnIdx] = useState(0);
-  const [viewOnceMode, setViewOnceMode] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -123,7 +118,6 @@ export function Chat({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Auto-scroll Down
   const scrollToBottom = useCallback(
     (smooth = true) =>
       messagesEndRef.current?.scrollIntoView({
@@ -135,7 +129,6 @@ export function Chat({
     scrollToBottom();
   }, [messages, scrollToBottom]);
 
-  // Show "scroll down" arrow
   useEffect(() => {
     const el = scrollAreaRef.current;
     if (!el) return;
@@ -145,14 +138,12 @@ export function Chat({
     return () => el.removeEventListener("scroll", onScroll);
   }, []);
 
-  // Sync button rotation
   const handleSync = () => {
     setIsSyncing(true);
     onSyncReq();
     setTimeout(() => setIsSyncing(false), 1000);
   };
 
-  // Push notification permission check
   useEffect(() => {
     try {
       if ("Notification" in window)
@@ -162,7 +153,6 @@ export function Chat({
     }
   }, []);
 
-  // Textarea resize
   useEffect(() => {
     const el = textareaRef.current;
     if (!el) return;
@@ -170,7 +160,6 @@ export function Chat({
     el.style.height = Math.min(el.scrollHeight, 108) + "px";
   }, [input]);
 
-  // Typings
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInput(e.target.value);
     onTyping(true);
@@ -178,7 +167,6 @@ export function Chat({
     typingTimer.current = setTimeout(() => onTyping(false), 2000);
   };
 
-  // Sends
   const handleSend = (e: React.FormEvent) => {
     e.preventDefault();
     if (input.trim() && status === "connected") {
@@ -204,14 +192,19 @@ export function Chat({
     const reader = new FileReader();
     reader.onload = (ev) => {
       onSendMessage(ev.target?.result as string, "image", {
-        viewOnce: viewOnceMode,
         expiresIn: BURN_OPTIONS[burnIdx] || undefined,
       });
-      setViewOnceMode(false); // reset toggle
     };
     reader.readAsDataURL(file);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
+
+  const handleDownloadImage = useCallback((base64: string) => {
+    const a = document.createElement("a");
+    a.href = base64;
+    a.download = `SecureChat_${format(new Date(), "yyyyMMdd_HHmmss")}.jpg`;
+    a.click();
+  }, []);
 
   // Self Destruct Sweeper
   useEffect(() => {
@@ -228,7 +221,6 @@ export function Chat({
     return () => clearInterval(interval);
   }, [messages, onClearMsg]);
 
-  // UI Helpers
   const toggleNotifications = async () => {
     if (!("Notification" in window)) return;
     try {
@@ -253,11 +245,9 @@ export function Chat({
   }, []);
 
   const closeLightbox = () => {
-    if (previewImage?.viewOnce) onClearMsg(previewImage.id);
     setPreviewImage(null);
   };
 
-  // Display List
   type DisplayItem =
     | { kind: "separator"; label: string; key: string }
     | {
@@ -611,12 +601,19 @@ export function Chat({
               alt="Preview"
               className="max-w-full max-h-full object-contain rounded-lg"
             />
-            {previewImage.viewOnce && (
-              <p className="text-white font-medium mt-6 bg-red-600/80 px-4 py-2 rounded-full flex items-center gap-2">
-                <Flame className="w-4 h-4" /> This photo will self-destruct when
-                closed.
-              </p>
-            )}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDownloadImage(previewImage.src);
+              }}
+              className="absolute bottom-10 px-6 py-2.5 rounded-full text-white font-medium flex items-center gap-2 transition-all hover:bg-white/10"
+              style={{
+                background: "rgba(255,255,255,0.15)",
+                backdropFilter: "blur(4px)",
+              }}
+            >
+              <Download className="w-4 h-4" /> Save Photo
+            </button>
           </motion.div>
         )}
       </AnimatePresence>
@@ -717,8 +714,7 @@ export function Chat({
                           }
                     }
                   >
-                    {/* Expiration warning icon */}
-                    {msg.expiresIn && !emojiOnly && (
+                    {msg.expiresIn && (!emojiOnly || msg.type === "image") && (
                       <div className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full p-1 shadow-md z-10">
                         <Timer className="w-3 h-3" />
                       </div>
@@ -765,40 +761,27 @@ export function Chat({
                         )}
                       </div>
                     ) : (
-                      <div className="relative">
-                        {msg.viewOnce ? (
-                          <button
-                            onClick={() =>
-                              setPreviewImage({
-                                id: msg.id,
-                                src: msg.text,
-                                viewOnce: true,
-                              })
-                            }
-                            className="w-48 h-48 sm:w-64 sm:h-64 rounded-xl flex flex-col items-center justify-center gap-3 bg-white/5 backdrop-blur-xl border border-white/10 hover:bg-white/10 transition-colors"
-                          >
-                            <div className="w-12 h-12 rounded-full bg-red-500/20 text-red-400 flex items-center justify-center">
-                              <Flame className="w-6 h-6" />
-                            </div>
-                            <span className="text-white text-sm font-semibold">
-                              View Photo
-                            </span>
-                          </button>
-                        ) : (
-                          <img
-                            src={msg.text}
-                            alt="Image"
-                            onClick={() =>
-                              setPreviewImage({
-                                id: msg.id,
-                                src: msg.text,
-                                viewOnce: false,
-                              })
-                            }
-                            className="rounded-xl max-w-full h-auto cursor-zoom-in block border border-transparent"
-                            style={{ maxHeight: 280 }}
-                          />
-                        )}
+                      <div
+                        className="relative group/dl cursor-zoom-in"
+                        onClick={() =>
+                          setPreviewImage({ id: msg.id, src: msg.text })
+                        }
+                      >
+                        <img
+                          src={msg.text}
+                          alt="Image"
+                          className="rounded-xl max-w-full h-auto block border border-transparent"
+                          style={{ maxHeight: 280 }}
+                        />
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDownloadImage(msg.text);
+                          }}
+                          className="absolute top-2 right-2 bg-black/60 hover:bg-black/80 text-white rounded-full p-2 opacity-0 group-hover/dl:opacity-100 transition-all shadow-md"
+                        >
+                          <Download className="w-4 h-4" />
+                        </button>
                         {isLast && (
                           <div
                             className="absolute bottom-1.5 right-2 flex items-center gap-1.5 px-1 rounded"
@@ -866,7 +849,6 @@ export function Chat({
           })
         )}
 
-        {/* Typing Bubble Indicator */}
         {typingUsers.length > 0 && (
           <motion.div
             initial={{ opacity: 0, y: 10, scale: 0.9 }}
@@ -922,7 +904,6 @@ export function Chat({
           borderTop: "1px solid rgba(255,255,255,0.05)",
         }}
       >
-        {/* Quick Toolbar */}
         <div className="flex items-center justify-between px-2 mb-2">
           <div className="flex items-center gap-2">
             <button
@@ -939,19 +920,6 @@ export function Chat({
               {BURN_OPTIONS[burnIdx]
                 ? `Self-Destruct: ${BURN_LABELS[BURN_OPTIONS[burnIdx]!]}`
                 : "Self-Destruct: Off"}
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewOnceMode(!viewOnceMode)}
-              className={cn(
-                "px-2.5 py-1 text-xs rounded-full flex items-center gap-1.5 transition-colors border",
-                viewOnceMode
-                  ? "border-amber-500/30 bg-amber-500/10 text-amber-400"
-                  : "border-white/10 text-slate-400 hover:bg-white/5",
-              )}
-            >
-              <Flame className="w-3.5 h-3.5" />
-              {viewOnceMode ? "View Once Photo On" : "View Once Photo Off"}
             </button>
           </div>
         </div>

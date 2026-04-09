@@ -38,7 +38,6 @@ export default function App() {
     addMessage,
     deleteMessage,
     markRead,
-    markViewed,
     clearHistory,
     isReady,
   } = useChat(password);
@@ -75,7 +74,6 @@ export default function App() {
           senderDeviceId: d.senderDeviceId as string | undefined,
           timestamp: (d.timestamp as number) || Date.now(),
           type: d.type as "text" | "image",
-          viewOnce: !!d.viewOnce,
           expiresIn: d.expiresIn as number | undefined,
         };
         addMessage(msg);
@@ -92,21 +90,13 @@ export default function App() {
             ) {
               try {
                 new Notification("New Message", {
-                  body: msg.viewOnce
-                    ? "📷 View Once Photo"
-                    : msg.type === "text"
-                      ? msg.text
-                      : "📷 Image",
+                  body: msg.type === "text" ? msg.text : "📷 Image",
                   icon: "/icon.svg",
                 });
               } catch {
                 navigator.serviceWorker?.ready.then((reg) =>
                   reg.showNotification("New Message", {
-                    body: msg.viewOnce
-                      ? "📷 View Once Photo"
-                      : msg.type === "text"
-                        ? msg.text
-                        : "📷 Image",
+                    body: msg.type === "text" ? msg.text : "📷 Image",
                     icon: "/icon.svg",
                   }),
                 );
@@ -138,11 +128,7 @@ export default function App() {
   // ---- Actions Wiring ----
 
   const handleSendMessage = useCallback(
-    (
-      text: string,
-      type: "text" | "image",
-      opts?: { viewOnce?: boolean; expiresIn?: number },
-    ) => {
+    (text: string, type: "text" | "image", opts?: { expiresIn?: number }) => {
       const msg: Message = {
         id: crypto.randomUUID(),
         text,
@@ -150,7 +136,6 @@ export default function App() {
         senderDeviceId: MY_DEVICE_ID,
         timestamp: Date.now(),
         type,
-        viewOnce: opts?.viewOnce,
         expiresIn: opts?.expiresIn,
         readBy: [], // explicitly empty initially
       };
@@ -225,7 +210,6 @@ export default function App() {
             }}
             onClearHistory={handleClearHistory}
             onClearMsg={handleClearMsg}
-            onMarkViewed={markViewed}
             onSyncReq={broadcastSyncReq}
             onTyping={broadcastTyping}
             onDismissSendError={() => setSendError(null)}
