@@ -23,15 +23,35 @@ const ICE_SERVERS: RTCIceServer[] = [
   { urls: "stun:openrelay.metered.ca:80" },
 
   // TURN UDP
-  { urls: "turn:openrelay.metered.ca:80",   username: "openrelayproject", credential: "openrelayproject" },
-  { urls: "turn:openrelay.metered.ca:3478", username: "openrelayproject", credential: "openrelayproject" },
+  {
+    urls: "turn:openrelay.metered.ca:80",
+    username: "openrelayproject",
+    credential: "openrelayproject",
+  },
+  {
+    urls: "turn:openrelay.metered.ca:3478",
+    username: "openrelayproject",
+    credential: "openrelayproject",
+  },
 
   // TURN TCP/443 — works through most firewalls (looks like HTTPS)
-  { urls: "turn:openrelay.metered.ca:443",              username: "openrelayproject", credential: "openrelayproject" },
-  { urls: "turn:openrelay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" },
+  {
+    urls: "turn:openrelay.metered.ca:443",
+    username: "openrelayproject",
+    credential: "openrelayproject",
+  },
+  {
+    urls: "turn:openrelay.metered.ca:443?transport=tcp",
+    username: "openrelayproject",
+    credential: "openrelayproject",
+  },
 
   // TURNS — TURN over TLS (most secure/firewall-friendly)
-  { urls: "turns:openrelay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" },
+  {
+    urls: "turns:openrelay.metered.ca:443",
+    username: "openrelayproject",
+    credential: "openrelayproject",
+  },
 ];
 
 // Force relay: skip P2P/STUN path entirely, always go through TURN.
@@ -71,7 +91,10 @@ export function usePeer(password: string | null) {
     };
 
     const clearOpenTimeout = () => {
-      if (openTimeoutId) { clearTimeout(openTimeoutId); openTimeoutId = null; }
+      if (openTimeoutId) {
+        clearTimeout(openTimeoutId);
+        openTimeoutId = null;
+      }
     };
 
     const setupConnection = (conn: DataConnection) => {
@@ -84,13 +107,22 @@ export function usePeer(password: string | null) {
       const pc = (conn as any).peerConnection as RTCPeerConnection | undefined;
       if (pc) {
         pc.oniceconnectionstatechange = () => {
-          console.log("[ICE]", pc.iceConnectionState, "| gathering:", pc.iceGatheringState);
+          console.log(
+            "[ICE]",
+            pc.iceConnectionState,
+            "| gathering:",
+            pc.iceGatheringState,
+          );
           if (pc.iceConnectionState === "failed") {
             clearOpenTimeout();
-            if (isMounted) setError("ICE failed — TURN relay could not connect. Try again.");
+            if (isMounted)
+              setError("ICE failed — TURN relay could not connect. Try again.");
             setStatusSynced("error");
           }
-          if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
+          if (
+            pc.iceConnectionState === "connected" ||
+            pc.iceConnectionState === "completed"
+          ) {
             clearOpenTimeout();
           }
         };
@@ -103,7 +135,9 @@ export function usePeer(password: string | null) {
       openTimeoutId = setTimeout(() => {
         if (statusRef.current !== "connected" && isMounted) {
           console.warn("[usePeer] DataChannel open timed out after 15s");
-          setError("Could not open data channel — TURN relay may be unreachable. Try again.");
+          setError(
+            "Could not open data channel — TURN relay may be unreachable. Try again.",
+          );
           setStatusSynced("error");
         }
       }, OPEN_TIMEOUT_MS);
@@ -208,7 +242,10 @@ export function usePeer(password: string | null) {
     return () => {
       isMounted = false;
       clearOpenTimeout();
-      if (connRef.current) { connRef.current.close(); connRef.current = null; }
+      if (connRef.current) {
+        connRef.current.close();
+        connRef.current = null;
+      }
       if (currentPeer) currentPeer.destroy();
       statusRef.current = "disconnected";
       setRole(null);

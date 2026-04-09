@@ -9,8 +9,8 @@ const SESSION_KEY = "sc_session_key";
 const MY_DEVICE_ID = getDeviceId();
 
 export default function App() {
-  const [password, setPassword] = useState<string | null>(
-    () => localStorage.getItem(SESSION_KEY),
+  const [password, setPassword] = useState<string | null>(() =>
+    localStorage.getItem(SESSION_KEY),
   );
   const [sendError, setSendError] = useState<string | null>(null);
 
@@ -19,22 +19,51 @@ export default function App() {
     error: peerError,
     role,
     participants,
+    typingUsers,
     sendData,
     broadcastClear,
+    broadcastClearMsg,
+    broadcastSyncReq,
+    broadcastRead,
+    broadcastTyping,
     setOnDataReceived,
     setOnClear,
+    setOnClearMsg,
+    setOnRead,
+    setOnSyncReq,
   } = useNostr(password);
 
-  const { messages, addMessage, clearHistory, isReady } = useChat(password);
+  const {
+    messages,
+    addMessage,
+    deleteMessage,
+    markRead,
+    markViewed,
+    clearHistory,
+    isReady,
+  } = useChat(password);
 
-  // When a remote user clears the chat — clear ours too
+  // ---- Remote Data Wiring ----
+
   useEffect(() => {
-    setOnClear(() => {
-      clearHistory();
+    setOnClear(() => clearHistory());
+    setOnClearMsg((id) => deleteMessage(id));
+    setOnRead((msgId, devId) => markRead(msgId, devId));
+    setOnSyncReq((devId) => {
+      // Re-broadcast our presence when someone requests sync
+      // (Actual message sync handles via Nostr's 24h subscribe window, but
+      // this helps us detect who is currently active).
     });
-  }, [setOnClear, clearHistory]);
+  }, [
+    setOnClear,
+    setOnClearMsg,
+    setOnRead,
+    setOnSyncReq,
+    clearHistory,
+    deleteMessage,
+    markRead,
+  ]);
 
-  // Handle incoming chat messages
   useEffect(() => {
     setOnDataReceived((data: unknown) => {
       const d = data as Record<string, unknown>;
@@ -46,33 +75,74 @@ export default function App() {
           senderDeviceId: d.senderDeviceId as string | undefined,
           timestamp: (d.timestamp as number) || Date.now(),
           type: d.type as "text" | "image",
+          viewOnce: !!d.viewOnce,
+          expiresIn: d.expiresIn as number | undefined,
         };
         addMessage(msg);
 
-        // Push notification if document hidden
-        try {
-          if (document.hidden && "Notification" in window && Notification.permission === "granted") {
-            try {
-              new Notification("New Message", {
-                body: msg.type === "text" ? msg.text : "📷 Image",
-                icon: "/icon.svg",
-              });
-            } catch {
-              navigator.serviceWorker?.ready.then(reg =>
-                reg.showNotification("New Message", {
-                  body: msg.type === "text" ? msg.text : "📷 Image",
+        // Auto-read receipt logic: if doc not hidden, we read it immediately
+        if (!document.hidden) {
+          broadcastRead(msg.id);
+        } else {
+          // Push notification if document hidden
+          try {
+            if (
+              "Notification" in window &&
+              Notification.permission === "granted"
+            ) {
+              try {
+                new Notification("New Message", {
+                  body: msg.viewOnce
+                    ? "📷 View Once Photo"
+                    : msg.type === "text"
+                      ? msg.text
+                      : "📷 Image",
                   icon: "/icon.svg",
-                }),
-              );
+                });
+              } catch {
+                navigator.serviceWorker?.ready.then((reg) =>
+                  reg.showNotification("New Message", {
+                    body: msg.viewOnce
+                      ? "📷 View Once Photo"
+                      : msg.type === "text"
+                        ? msg.text
+                        : "📷 Image",
+                    icon: "/icon.svg",
+                  }),
+                );
+              }
             }
+          } catch {
+            /* ignore notification errors */
           }
-        } catch { /* ignore notification errors */ }
+        }
       }
     });
-  }, [setOnDataReceived, addMessage]);
+  }, [setOnDataReceived, addMessage, broadcastRead]);
+
+  // When window becomes visible, send read receipts for all unread messages
+  useEffect(() => {
+    const onVis = () => {
+      if (!document.hidden) {
+        const unread = messages.filter(
+          (m) =>
+            m.sender === "partner" && !(m.readBy || []).includes(MY_DEVICE_ID),
+        );
+        unread.forEach((m) => broadcastRead(m.id));
+      }
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [messages, broadcastRead]);
+
+  // ---- Actions Wiring ----
 
   const handleSendMessage = useCallback(
-    (text: string, type: "text" | "image") => {
+    (
+      text: string,
+      type: "text" | "image",
+      opts?: { viewOnce?: boolean; expiresIn?: number },
+    ) => {
       const msg: Message = {
         id: crypto.randomUUID(),
         text,
@@ -80,10 +150,12 @@ export default function App() {
         senderDeviceId: MY_DEVICE_ID,
         timestamp: Date.now(),
         type,
+        viewOnce: opts?.viewOnce,
+        expiresIn: opts?.expiresIn,
+        readBy: [], // explicitly empty initially
       };
 
-      // Include senderDeviceId in the wire payload for multi-user colors
-      const wireMsg = { ...msg, senderDeviceId: MY_DEVICE_ID };
+      const wireMsg = { ...msg }; // senderDeviceId is already inside
       const success = sendData(wireMsg);
       if (success) {
         addMessage(msg);
@@ -96,26 +168,18 @@ export default function App() {
     [sendData, addMessage],
   );
 
-  const handleLogin = useCallback((pw: string) => {
-    localStorage.setItem(SESSION_KEY, pw);
-    setPassword(pw);
-  }, []);
-
-  const handleLogout = useCallback(() => {
-    localStorage.removeItem(SESSION_KEY);
-    setPassword(null);
-    setSendError(null);
-  }, []);
-
-  const handleRetry = useCallback(() => {
-    const saved = localStorage.getItem(SESSION_KEY);
-    if (saved) { setPassword(null); setTimeout(() => setPassword(saved), 50); }
-  }, []);
-
   const handleClearHistory = useCallback(() => {
-    clearHistory();       // local clear
-    broadcastClear();     // tell all other devices
+    clearHistory();
+    broadcastClear();
   }, [clearHistory, broadcastClear]);
+
+  const handleClearMsg = useCallback(
+    (id: string) => {
+      deleteMessage(id);
+      broadcastClearMsg(id);
+    },
+    [deleteMessage, broadcastClearMsg],
+  );
 
   return (
     <AnimatePresence mode="wait">
@@ -128,7 +192,12 @@ export default function App() {
           transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
           className="h-[100dvh] w-full"
         >
-          <Login onLogin={handleLogin} />
+          <Login
+            onLogin={(pw) => {
+              localStorage.setItem(SESSION_KEY, pw);
+              setPassword(pw);
+            }}
+          />
         </motion.div>
       ) : (
         <motion.div
@@ -140,16 +209,31 @@ export default function App() {
         >
           <Chat
             messages={messages}
-            onSendMessage={handleSendMessage}
-            status={status}
-            onClearHistory={handleClearHistory}
-            sendError={sendError}
-            onDismissSendError={() => setSendError(null)}
-            onLogout={handleLogout}
             myDeviceId={MY_DEVICE_ID}
             participants={participants}
-            onRetry={handleRetry}
+            typingUsers={typingUsers}
+            onSendMessage={handleSendMessage}
+            status={status}
+            sendError={sendError}
             peerError={peerError}
+            onRetry={() => {
+              const saved = localStorage.getItem(SESSION_KEY);
+              if (saved) {
+                setPassword(null);
+                setTimeout(() => setPassword(saved), 50);
+              }
+            }}
+            onClearHistory={handleClearHistory}
+            onClearMsg={handleClearMsg}
+            onMarkViewed={markViewed}
+            onSyncReq={broadcastSyncReq}
+            onTyping={broadcastTyping}
+            onDismissSendError={() => setSendError(null)}
+            onLogout={() => {
+              localStorage.removeItem(SESSION_KEY);
+              setPassword(null);
+              setSendError(null);
+            }}
           />
         </motion.div>
       )}

@@ -16,15 +16,31 @@ export function Login({ onLogin }: LoginProps) {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-6 relative overflow-hidden"
-         style={{ background: "linear-gradient(160deg, #0d1f35 0%, #0e1621 50%, #0a1628 100%)" }}>
-
+    <div
+      className="min-h-screen flex flex-col items-center justify-center p-6 relative overflow-hidden"
+      style={{
+        background:
+          "linear-gradient(160deg, #0d1f35 0%, #0e1621 50%, #0a1628 100%)",
+      }}
+    >
       {/* Background glow blobs */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute top-[-10%] left-[20%] w-[60%] h-[50%] rounded-full"
-             style={{ background: "radial-gradient(circle, rgba(43,91,219,0.12) 0%, transparent 70%)", filter: "blur(60px)" }} />
-        <div className="absolute bottom-[-10%] right-[10%] w-[50%] h-[40%] rounded-full"
-             style={{ background: "radial-gradient(circle, rgba(43,91,219,0.07) 0%, transparent 70%)", filter: "blur(80px)" }} />
+        <div
+          className="absolute top-[-10%] left-[20%] w-[60%] h-[50%] rounded-full"
+          style={{
+            background:
+              "radial-gradient(circle, rgba(43,91,219,0.12) 0%, transparent 70%)",
+            filter: "blur(60px)",
+          }}
+        />
+        <div
+          className="absolute bottom-[-10%] right-[10%] w-[50%] h-[40%] rounded-full"
+          style={{
+            background:
+              "radial-gradient(circle, rgba(43,91,219,0.07) 0%, transparent 70%)",
+            filter: "blur(80px)",
+          }}
+        />
       </div>
 
       <motion.div
@@ -41,14 +57,24 @@ export function Login({ onLogin }: LoginProps) {
             transition={{ delay: 0.15, duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
             className="relative mb-5"
           >
-            <div className="w-24 h-24 rounded-full flex items-center justify-center"
-                 style={{ background: "linear-gradient(135deg, #1d4ed8 0%, #2b5bdb 50%, #3b82f6 100%)", boxShadow: "0 0 60px rgba(43,91,219,0.4)" }}>
+            <div
+              className="w-24 h-24 rounded-full flex items-center justify-center"
+              style={{
+                background:
+                  "linear-gradient(135deg, #1d4ed8 0%, #2b5bdb 50%, #3b82f6 100%)",
+                boxShadow: "0 0 60px rgba(43,91,219,0.4)",
+              }}
+            >
               <ShieldCheck className="w-11 h-11 text-white" strokeWidth={1.5} />
             </div>
           </motion.div>
-          <h1 className="text-3xl font-semibold tracking-tight text-white mb-2">SecureChat</h1>
+          <h1 className="text-3xl font-semibold tracking-tight text-white mb-2">
+            SecureChat
+          </h1>
           <p className="text-sm text-slate-400 text-center leading-relaxed">
-            Enter a shared passphrase to open<br />an encrypted private channel
+            Enter a shared passphrase to open
+            <br />
+            an encrypted private channel
           </p>
         </div>
 
@@ -69,8 +95,12 @@ export function Login({ onLogin }: LoginProps) {
                 border: "1px solid rgba(255,255,255,0.08)",
                 boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)",
               }}
-              onFocus={e => (e.currentTarget.style.borderColor = "rgba(59,130,246,0.5)")}
-              onBlur={e => (e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)")}
+              onFocus={(e) =>
+                (e.currentTarget.style.borderColor = "rgba(59,130,246,0.5)")
+              }
+              onBlur={(e) =>
+                (e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)")
+              }
               autoFocus
             />
             <button
@@ -78,7 +108,11 @@ export function Login({ onLogin }: LoginProps) {
               onClick={() => setShowPassword(!showPassword)}
               className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-500 hover:text-slate-300 transition-colors"
             >
-              {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              {showPassword ? (
+                <EyeOff className="w-4 h-4" />
+              ) : (
+                <Eye className="w-4 h-4" />
+              )}
             </button>
           </div>
 
@@ -91,7 +125,9 @@ export function Login({ onLogin }: LoginProps) {
               background: password.trim()
                 ? "linear-gradient(135deg, #1d4ed8 0%, #3b82f6 100%)"
                 : "rgba(31,45,61,0.8)",
-              boxShadow: password.trim() ? "0 4px 20px rgba(43,91,219,0.35)" : "none",
+              boxShadow: password.trim()
+                ? "0 4px 20px rgba(43,91,219,0.35)"
+                : "none",
             }}
           >
             Join Channel
@@ -106,7 +142,9 @@ export function Login({ onLogin }: LoginProps) {
           className="mt-8 flex items-center justify-center gap-2 text-xs text-slate-600"
         >
           <Lock className="w-3 h-3" />
-          <span>End-to-end encrypted · No servers · Messages expire in 24h</span>
+          <span>
+            End-to-end encrypted · No servers · Messages expire in 24h
+          </span>
         </motion.div>
       </motion.div>
     </div>

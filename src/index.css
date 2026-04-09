@@ -16,7 +16,9 @@
   box-sizing: border-box;
 }
 
-html, body, #root {
+html,
+body,
+#root {
   height: 100%;
   overscroll-behavior: none;
 }
@@ -29,16 +31,31 @@ body {
 }
 
 /* Sleek scrollbar */
-::-webkit-scrollbar { width: 4px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+::-webkit-scrollbar {
+  width: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+}
 
 /* Safe areas */
 @layer utilities {
-  .safe-top    { padding-top:    env(safe-area-inset-top);    }
-  .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
-  .pt-safe  { padding-top:    max(0.75rem, env(safe-area-inset-top));    }
-  .pb-safe  { padding-bottom: max(0.75rem, env(safe-area-inset-bottom)); }
+  .safe-top {
+    padding-top: env(safe-area-inset-top);
+  }
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .pt-safe {
+    padding-top: max(0.75rem, env(safe-area-inset-top));
+  }
+  .pb-safe {
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  }
 }
 
 /* Bubble tail for MY messages (right side) */

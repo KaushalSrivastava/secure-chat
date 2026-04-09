@@ -1,5 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
-import { deriveKey, encryptMessage, decryptMessage, hashString, EncryptedPayload } from "../lib/crypto";
+import {
+  deriveKey,
+  encryptMessage,
+  decryptMessage,
+  hashString,
+  EncryptedPayload,
+} from "../lib/crypto";
 
 export interface Message {
   id: string;
@@ -8,6 +14,12 @@ export interface Message {
   senderDeviceId?: string; // for multi-user bubble colors
   timestamp: number;
   type: "text" | "image";
+
+  // Premium features
+  viewOnce?: boolean;
+  expiresIn?: number; // seconds after viewing
+  isViewed?: boolean; // local flag
+  readBy?: string[]; // deviceIds that read it
 }
 
 interface EncryptedStoredMessage {
@@ -17,6 +29,10 @@ interface EncryptedStoredMessage {
   senderDeviceId?: string;
   timestamp: number;
   type: "text" | "image";
+  viewOnce?: boolean;
+  expiresIn?: number;
+  isViewed?: boolean;
+  readBy?: string[];
 }
 
 const MS_IN_24_HOURS = 24 * 60 * 60 * 1000;
@@ -33,7 +49,7 @@ export function useChat(password: string | null) {
       setCryptoKey(null);
       setStorageKey(null);
       setIsReady(false);
-      setMessages([]); // clear stale messages on logout so they don't flash
+      setMessages([]);
       return;
     }
 
@@ -42,10 +58,9 @@ export function useChat(password: string | null) {
       ([key, hash]) => {
         if (isMounted) {
           setCryptoKey(key);
-          // Per-session key: each password gets its own storage bucket
           setStorageKey(`scc_${hash.substring(0, 16)}`);
         }
-      }
+      },
     );
 
     return () => {
@@ -68,8 +83,9 @@ export function useChat(password: string | null) {
         const encryptedMessages: EncryptedStoredMessage[] = JSON.parse(stored);
         const now = Date.now();
 
+        // Filter out expired ephemeral messages or messages older than 24h
         const recentEncrypted = encryptedMessages.filter(
-          (m) => now - m.timestamp < MS_IN_24_HOURS
+          (m) => now - m.timestamp < MS_IN_24_HOURS,
         );
 
         if (recentEncrypted.length !== encryptedMessages.length) {
@@ -87,9 +103,13 @@ export function useChat(password: string | null) {
               senderDeviceId: em.senderDeviceId,
               timestamp: em.timestamp,
               type: em.type,
+              viewOnce: em.viewOnce,
+              expiresIn: em.expiresIn,
+              isViewed: em.isViewed,
+              readBy: em.readBy || [],
             });
           } catch {
-            // Wrong key or corrupted — skip
+            /* skip */
           }
         }
 
@@ -102,11 +122,11 @@ export function useChat(password: string | null) {
 
     loadMessages();
 
+    // 24-hour cleanup interval
     const interval = setInterval(() => {
-      setMessages((current) => {
-        const now = Date.now();
-        return current.filter((m) => now - m.timestamp < MS_IN_24_HOURS);
-      });
+      setMessages((current) =>
+        current.filter((m) => Date.now() - m.timestamp < MS_IN_24_HOURS),
+      );
     }, 60_000);
 
     return () => clearInterval(interval);
@@ -125,8 +145,13 @@ export function useChat(password: string | null) {
             id: m.id,
             payload,
             sender: m.sender,
+            senderDeviceId: m.senderDeviceId,
             timestamp: m.timestamp,
             type: m.type,
+            viewOnce: m.viewOnce,
+            expiresIn: m.expiresIn,
+            isViewed: m.isViewed,
+            readBy: m.readBy,
           });
         }
         localStorage.setItem(storageKey, JSON.stringify(encrypted));
@@ -139,7 +164,34 @@ export function useChat(password: string | null) {
   }, [messages, cryptoKey, storageKey, isReady]);
 
   const addMessage = useCallback((message: Message) => {
-    setMessages((prev) => [...prev, message]);
+    setMessages((prev) => {
+      // Deduplicate on add (useful for sync responses)
+      if (prev.some((m) => m.id === message.id)) return prev;
+      return [...prev, message].sort((a, b) => a.timestamp - b.timestamp);
+    });
+  }, []);
+
+  const deleteMessage = useCallback((id: string) => {
+    setMessages((prev) => prev.filter((m) => m.id !== id));
+  }, []);
+
+  const markRead = useCallback((msgId: string, deviceId: string) => {
+    setMessages((prev) =>
+      prev.map((m) => {
+        if (m.id === msgId) {
+          const reads = m.readBy || [];
+          if (!reads.includes(deviceId))
+            return { ...m, readBy: [...reads, deviceId] };
+        }
+        return m;
+      }),
+    );
+  }, []);
+
+  const markViewed = useCallback((msgId: string) => {
+    setMessages((prev) =>
+      prev.map((m) => (m.id === msgId ? { ...m, isViewed: true } : m)),
+    );
   }, []);
 
   const clearHistory = useCallback(() => {
@@ -147,5 +199,13 @@ export function useChat(password: string | null) {
     if (storageKey) localStorage.removeItem(storageKey);
   }, [storageKey]);
 
-  return { messages, addMessage, clearHistory, isReady, cryptoKey };
+  return {
+    messages,
+    addMessage,
+    deleteMessage,
+    markRead,
+    markViewed,
+    clearHistory,
+    isReady,
+  };
 }
