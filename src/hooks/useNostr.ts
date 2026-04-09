@@ -36,7 +36,7 @@ export type PeerRole = string | null;
 const RELAYS = [
   "wss://relay.damus.io",
   "wss://nos.lol",
-  "wss://relay.nostr.band",
+  "wss://relay.primal.net",
   "wss://nostr.mom",
 ];
 
@@ -243,7 +243,7 @@ export function useNostr(password: string | null) {
         since: Math.floor(Date.now() / 1000) - HISTORY_WINDOW_S,
       };
 
-      const connectRelay = (url: string, retryMs = 2000) => {
+      const connectRelay = (url: string, retryMs = 4000) => {
         if (!isMounted) return;
         const ws = new WebSocket(url);
         sockets.push(ws);
@@ -310,9 +310,9 @@ export function useNostr(password: string | null) {
             statusRef.current !== "error"
           )
             setS("disconnected");
-          const delay = Math.min(retryMs, 30_000);
+          const delay = Math.min(retryMs, 60_000);
           retryTimers.push(
-            setTimeout(() => connectRelay(url, delay * 2), delay),
+            setTimeout(() => connectRelay(url, delay * 1.5), delay),
           );
         };
       };
